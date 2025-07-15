@@ -1,0 +1,25 @@
+name: 🚀 Content Factory
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 📦 Install dependencies
+        run: npm install
+      - name: 🏭 Run Content Factory
+        run: node factory.js
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - name: 🚀 Commit and Push new posts
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions-bot@github.com'
+          git add src/content/posts/*.md
+          git diff-index --quiet HEAD || (git commit -m "🚀 Автоматически добавлены новые статьи" && git push)
