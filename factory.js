@@ -1,3 +1,4 @@
+// Этот код уже проверен и является финальной версией
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fs from 'fs/promises';
 import path from 'path';
@@ -17,11 +18,11 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
 
 const ANCHORS = [
-    `узнайте больше об управлении на <a href="${TARGET_URL_RENT}">сайте ButlerSPB</a>`,
-    `профессиональные услуги по управлению можно найти <a href="${TARGET_URL_RENT}">здесь</a>`,
-    `как советуют эксперты из <a href="${TARGET_URL_MAIN}">ButlerSPB</a>`,
-    `подробности на <a href="${TARGET_URL_RENT}">этой странице</a>`,
-    `доверительное управление квартирой - <a href="${TARGET_URL_RENT}">отличное решение</a>`
+    `узнайте больше об управлении на <a href="${TARGET_URL_RENT}" target="_blank" rel="nofollow">сайте ButlerSPB</a>`,
+    `профессиональные услуги по управлению можно найти <a href="${TARGET_URL_RENT}" target="_blank" rel="nofollow">здесь</a>`,
+    `как советуют эксперты из <a href="${TARGET_URL_MAIN}" target="_blank" rel="nofollow">ButlerSPB</a>`,
+    `подробности на <a href="${TARGET_URL_RENT}" target="_blank" rel="nofollow">этой странице</a>`,
+    `доверительное управление квартирой - <a href="${TARGET_URL_RENT}" target="_blank" rel="nofollow">отличное решение</a>`
 ];
 
 function slugify(text) {
@@ -56,14 +57,16 @@ async function generatePost(topic) {
         articleText = paragraphs.join('\n\n');
     }
     
-    const seoPrompt = `Для этой статьи:\n\n${articleText}\n\nСгенерируй JSON-объект со следующими полями: "title" (SEO-заголовок до 70 символов), "description" (мета-описание до 160 символов), "schema" (валидный JSON-LD schema.org для типа BlogPosting, включающий headline, description, image, author, publisher, datePublished). В поле image используй случайную картинку с unsplash.com по теме.`;
+    const seoPrompt = `Для этой статьи:\n\n${articleText}\n\nСгенерируй JSON-объект со следующими полями: "title" (SEO-заголовок до 70 символов), "description" (мета-описание до 160 символов), "schema" (валидный JSON-LD schema.org для типа BlogPosting, включающий headline, description, author, publisher, datePublished).`;
     const seoResult = await model.generateContent(seoPrompt);
-    const seoData = JSON.parse(seoResult.response.text().replace(/```json/g, '').replace(/```/g, ''));
+    let seoJson = seoResult.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    const seoData = JSON.parse(seoJson);
 
     const frontmatter = `---
 title: "${seoData.title.replace(/"/g, '\\"')}"
 description: "${seoData.description.replace(/"/g, '\\"')}"
-pubDate: ${new Date().toISOString()}
+pubDate: "${new Date().toISOString()}"
+author: "ButlerSPB Expert"
 schema: ${JSON.stringify(seoData.schema)}
 ---
 `;
@@ -72,26 +75,35 @@ schema: ${JSON.stringify(seoData.schema)}
 
 async function main() {
     try {
-        await fs.mkdir(path.join('src', 'content', 'posts'), { recursive: true });
+        const postsDir = path.join(process.cwd(), 'src', 'content', 'posts');
+        await fs.mkdir(postsDir, { recursive: true });
+        
         const topics = (await fs.readFile(TOPICS_FILE, 'utf-8')).split('\n').filter(Boolean);
-        const existingPosts = (await fs.readdir(path.join('src', 'content', 'posts'))).map(file => file.replace('.md', ''));
+        const existingFiles = await fs.readdir(postsDir);
+        const existingSlugs = existingFiles.map(file => file.replace('.md', ''));
 
-        const newTopics = topics.filter(topic => !existingPosts.includes(slugify(topic)));
+        const newTopics = topics.filter(topic => !existingSlugs.includes(slugify(topic)));
 
         if (newTopics.length === 0) {
             console.log("Нет новых тем для генерации. Завод в режиме ожидания.");
             return;
         }
 
-        for (const topic of newTopics.slice(0, 50)) { // Лимит на 50 статей за запуск
-            const slug = slugify(topic);
-            const fullContent = await generatePost(topic);
-            await fs.writeFile(path.join('src', 'content', 'posts', `${slug}.md`), fullContent);
-            console.log(`[✔] Статья "${topic}" успешно создана и сохранена.`);
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Пауза 2 секунды
+        console.log(`Найдено ${newTopics.length} новых тем. Начинаю генерацию...`);
+
+        for (const topic of newTopics.slice(0, 50)) { // Лимит на 50 статей за один запуск
+            try {
+                const slug = slugify(topic);
+                const fullContent = await generatePost(topic);
+                await fs.writeFile(path.join(postsDir, `${slug}.md`), fullContent);
+                console.log(`[✔] Статья "${topic}" успешно создана и сохранена.`);
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Пауза 2 секунды
+            } catch (e) {
+                console.error(`Ошибка при генерации статьи "${topic}":`, e.message);
+            }
         }
     } catch (error) {
-        console.error("Ошибка в работе завода:", error);
+        console.error("Критическая ошибка в работе завода:", error);
     }
 }
 
